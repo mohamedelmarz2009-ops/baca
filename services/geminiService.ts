@@ -35,10 +35,11 @@ const AUDIT_SCHEMA: Schema = {
           severity: { type: Type.STRING, enum: [Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL] },
           description: { type: Type.STRING },
           impact: { type: Type.STRING },
+          remediationSteps: { type: Type.STRING, description: "Detailed step-by-step instructions on how to fix the vulnerability manually." },
           remediationCode: { type: Type.STRING, description: "The corrected/patched code snippet or configuration command." },
           lineNumbers: { type: Type.STRING, description: "Affected line numbers if applicable." }
         },
-        required: ["name", "severity", "description", "remediationCode"]
+        required: ["name", "severity", "description", "remediationCode", "remediationSteps"]
       }
     }
   },
@@ -65,7 +66,7 @@ REGLAS DE FORMATO Y ESTILO:
    - Resumen Ejecutivo.
    - Tabla de Riesgos (Usa formato claro).
    - Análisis Técnico Detallado (Incluye Prueba de Concepto - PoC: ¿Cómo atacaría esto un hacker?).
-   - Remediación (Código parcheado y seguro).
+   - Remediación (PASO A PASO EXPLICATIVO y Código parcheado).
 3. "ZERO-MARKDOWN" EN PROSA: Evita el uso excesivo de negritas o cursivas. Usa MAYÚSCULAS para títulos.
 4. CÓDIGO: Usa siempre bloques de código para los parches.
 
@@ -93,14 +94,21 @@ FIRMA OBLIGATORIA AL FINAL:
 SENTINEL CORE // PROTECTING YOUR DIGITAL ASSETS
 `;
 
+// Helper for delay
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export const analyzeRequest = async (input: string, module: SentinelModule, language: Language): Promise<AnalysisResponse> => {
   try {
     // Select model based on task complexity
+    // OPTIMIZATION: Using 'gemini-3-flash-preview' for all modules to prevent RESOURCE_EXHAUSTED/Quota errors on Free Tier.
+    // The Pro model has stricter rate limits.
     let modelId = 'gemini-3-flash-preview';
-    // Use Pro model for coding and complex tasks
-    if (module === SentinelModule.AUDIT_ENGINE || module === SentinelModule.SECURE_FORGE) {
-        modelId = 'gemini-3-pro-preview';
-    }
+    
+    // Use Pro model for coding and complex tasks ONLY if you have a paid plan with higher quotas.
+    // Currently disabled to ensure stability.
+    // if (module === SentinelModule.AUDIT_ENGINE || module === SentinelModule.SECURE_FORGE) {
+    //     modelId = 'gemini-3-pro-preview';
+    // }
 
     let promptPrefix = "";
     let useSchema = false;
@@ -111,7 +119,7 @@ export const analyzeRequest = async (input: string, module: SentinelModule, lang
     // Configure context based on module
     switch (module) {
         case SentinelModule.AUDIT_ENGINE:
-            promptPrefix = `[MÓDULO: AUDIT ENGINE]\nAudita este código buscando vulnerabilidades críticas (SQLi, XSS, etc). Incluye PoC y CVSS:\n\n`;
+            promptPrefix = `[MÓDULO: AUDIT ENGINE]\nAudita este código buscando vulnerabilidades críticas (SQLi, XSS, etc). Incluye PoC y CVSS. Proporciona instrucciones detalladas paso a paso para la corrección:\n\n`;
             useSchema = true;
             break;
         case SentinelModule.ADVISORY_CHAT:
@@ -148,16 +156,41 @@ export const analyzeRequest = async (input: string, module: SentinelModule, lang
         requestConfig.responseSchema = AUDIT_SCHEMA;
     }
 
-    const response = await ai.models.generateContent({
-      model: modelId,
-      contents: promptPrefix + input,
-      config: requestConfig,
-    });
+    // RETRY LOGIC FOR RATE LIMITS
+    let response;
+    let attempt = 0;
+    const maxRetries = 3;
+
+    while (attempt < maxRetries) {
+        try {
+            response = await ai.models.generateContent({
+              model: modelId,
+              contents: promptPrefix + input,
+              config: requestConfig,
+            });
+            break; // Success, exit loop
+        } catch (e: any) {
+            attempt++;
+            // Check for rate limit errors (429 or Resource Exhausted)
+            const isRateLimit = e.status === 429 || e.code === 429 || e.message?.includes('429') || e.message?.includes('Quota exceeded') || e.message?.includes('RESOURCE_EXHAUSTED');
+            
+            if (isRateLimit && attempt < maxRetries) {
+                // Exponential backoff: 2s, 4s...
+                const waitTime = 2000 * Math.pow(2, attempt - 1);
+                console.warn(`Sentinel Core: Quota hit on attempt ${attempt}. Retrying in ${waitTime}ms...`);
+                await delay(waitTime);
+                continue;
+            }
+            // If not rate limit or max retries reached, throw error
+            throw e;
+        }
+    }
+
+    if (!response || !response.text) {
+      throw new Error("No response received from SENTINEL CORE after retries.");
+    }
 
     const text = response.text;
-    if (!text) {
-      throw new Error("No response received from SENTINEL CORE.");
-    }
 
     // Parse grounding metadata
     const groundingSources: { title: string; uri: string }[] = [];

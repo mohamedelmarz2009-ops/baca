@@ -102,7 +102,7 @@ const DICTIONARY = {
             secureChannel: 'ENCRYPTED CHANNEL',
             commandInput: 'INPUT VECTOR',
             awaiting: 'AWAITING DATA FOR',
-            processing: 'ANALYZING...',
+            processing: 'ANALIZING...',
             execute: 'EXECUTE ANALYSIS',
             systemIdle: 'SYSTEM IDLE',
             waitingStream: 'Secure connection established.',
@@ -218,8 +218,8 @@ const AuthModal: React.FC<{ onLogin: (email: string, name: string | undefined, p
                 return;
             }
 
-            // Hardcoded Admin Check
-            if (email === 'administrador@sentinel.com' && password === 'adminsentinelcore10@') {
+            // Hardcoded Admin Check with Trim for robustness
+            if (email.trim() === 'administrador@sentinel.com' && password.trim() === 'adminsentinelcore10@') {
                 onLogin(email, 'Administrador', 'COMMAND');
             } else {
                 // Default Login

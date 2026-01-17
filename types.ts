@@ -31,6 +31,7 @@ export interface Vulnerability {
   severity: Severity;
   description: string;
   impact: string;
+  remediationSteps: string; // Added field for step-by-step instructions
   remediationCode: string; // The patched code snippet
   lineNumbers?: string;
 }
