@@ -95,7 +95,13 @@ SENTINEL CORE // PROTECTING YOUR DIGITAL ASSETS
 
 export const analyzeRequest = async (input: string, module: SentinelModule, language: Language): Promise<AnalysisResponse> => {
   try {
-    const modelId = 'gemini-3-flash-preview';
+    // Select model based on task complexity
+    let modelId = 'gemini-3-flash-preview';
+    // Use Pro model for coding and complex tasks
+    if (module === SentinelModule.AUDIT_ENGINE || module === SentinelModule.SECURE_FORGE) {
+        modelId = 'gemini-3-pro-preview';
+    }
+
     let promptPrefix = "";
     let useSchema = false;
     const langName = getLanguageName(language);
@@ -129,8 +135,13 @@ export const analyzeRequest = async (input: string, module: SentinelModule, lang
 
     const requestConfig: any = {
         systemInstruction: SYSTEM_INSTRUCTION + langInstruction,
-        tools: [{ googleSearch: {} }],
     };
+
+    // Configure tools: Only enable Google Search for modules that benefit from external info and are NOT using JSON schema (to avoid conflicts)
+    // LEAK_HUNTER requires search. Others can use it for up-to-date info.
+    if (module === SentinelModule.LEAK_HUNTER || module === SentinelModule.ADVISORY_CHAT || module === SentinelModule.CRISIS_SIMULATOR || module === SentinelModule.COMPLIANCE_SHIELD) {
+        requestConfig.tools = [{ googleSearch: {} }];
+    }
 
     if (useSchema) {
         requestConfig.responseMimeType = "application/json";

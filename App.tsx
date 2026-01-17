@@ -749,6 +749,23 @@ const Dashboard: React.FC<{ user: User, onBack: () => void, onUpgradeNeeded: () 
                                              <MarkdownDisplay content={analysisData.result} />
                                          )}
 
+                                        {/* Grounding Sources / Citations */}
+                                        {analysisData.groundingSources && analysisData.groundingSources.length > 0 && (
+                                            <div className="mt-8 pt-4 border-t border-cyber-panel">
+                                                <h3 className="text-xs font-mono text-gray-500 uppercase mb-3">{t.ui.sources || 'SOURCES'}</h3>
+                                                <ul className="space-y-2">
+                                                    {analysisData.groundingSources.map((source, idx) => (
+                                                        <li key={idx} className="flex items-start gap-2">
+                                                            <ExternalLink size={12} className="text-cyber-cyan mt-0.5" />
+                                                            <a href={source.uri} target="_blank" rel="noopener noreferrer" className="text-xs text-cyber-cyan hover:underline font-mono break-all">
+                                                                {source.title}
+                                                            </a>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+
                                          <div className="text-center pt-8 opacity-50">
                                              <span className="text-[10px] font-mono tracking-[0.2em]">{t.ui.footer}</span>
                                          </div>
