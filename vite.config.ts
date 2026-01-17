@@ -7,9 +7,9 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, (process as any).cwd(), '');
   
   // CAPTURA DE LA LLAVE MAESTRA:
-  // Busca primero en las variables del sistema (Vercel) y luego en archivos .env
-  // Esto asegura que la llave que pongas en Vercel sea la que se use para todos los usuarios.
-  const apiKey = process.env.API_KEY || env.API_KEY;
+  // Se prioriza la variable de entorno, pero se usa la LLAVE MAESTRA proporcionada
+  // como respaldo GARANTIZADO si la configuración del servidor falla.
+  const apiKey = process.env.API_KEY || env.API_KEY || "AIzaSyBYebg7cldNtx77C36YUptjafekZyunExk";
 
   return {
     plugins: [react()],
@@ -17,7 +17,6 @@ export default defineConfig(({ mode }) => {
       // INYECCIÓN PERMANENTE:
       // Esto "quema" la llave dentro del código JavaScript final.
       // Cuando un usuario entre a tu web, la aplicación ya tendrá la llave configurada.
-      // No caduca (mientras no la cambies en Vercel) y es la misma para todos.
       'process.env.API_KEY': JSON.stringify(apiKey)
     },
     server: {

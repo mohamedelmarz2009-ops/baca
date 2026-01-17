@@ -4,7 +4,7 @@ import {
   ExternalLink, RefreshCw, Hexagon, MessageSquare, 
   Zap, ChevronRight, Languages, Check, Copy,
   Siren, FileCheck, Radar, Info, ArrowRight, CheckCircle,
-  LogIn, User as UserIcon, X, CreditCard, Square
+  LogIn, User as UserIcon, X, CreditCard, Square, Key
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { analyzeRequest } from './services/geminiService';
@@ -54,7 +54,8 @@ const DICTIONARY = {
             usageDesc: 'Has alcanzado el límite de tu plan gratuito (1 consulta). Actualiza para continuar.',
             locked: 'MÓDULO BLOQUEADO',
             lockedDesc: 'Este módulo requiere plan COMMAND.',
-            welcome: 'Bienvenido, Agente.'
+            welcome: 'Bienvenido, Agente.',
+            integrateApi: 'INTEGRAR API KEY'
         },
         aboutContent: {
             intro: 'SENTINEL CORE opera sobre una arquitectura híbrida que combina Modelos de Lenguaje Grande (LLMs) de última generación (Gemini 1.5 Pro/Flash) con bases de datos vectoriales de vulnerabilidades (CVE/CWE). A continuación, se detalla la tecnología detrás de cada módulo.',
@@ -123,7 +124,8 @@ const DICTIONARY = {
             usageDesc: 'Free plan limit reached (1 query). Upgrade to continue.',
             locked: 'MODULE LOCKED',
             lockedDesc: 'Requires COMMAND plan.',
-            welcome: 'Welcome, Agent.'
+            welcome: 'Welcome, Agent.',
+            integrateApi: 'INTEGRATE API KEY'
         },
         aboutContent: {
             intro: 'SENTINEL CORE operates on a hybrid architecture combining LLMs with vector databases. Below is the tech stack per module.',
@@ -186,6 +188,75 @@ const MarkdownDisplay: React.FC<{ content: string }> = ({ content }) => {
 
 // --- MODALS ---
 
+const ApiKeyModal: React.FC<{ onClose: () => void, onSave: (key: string) => void }> = ({ onClose, onSave }) => {
+    const MASTER_KEY = "AIzaSyBYebg7cldNtx77C36YUptjafekZyunExk";
+    const [inputKey, setInputKey] = useState('');
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = () => {
+        navigator.clipboard.writeText(MASTER_KEY);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    const handleSave = () => {
+        if (inputKey.trim()) {
+            onSave(inputKey.trim());
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+             <motion.div 
+                initial={{ scale: 0.9, opacity: 0 }} 
+                animate={{ scale: 1, opacity: 1 }}
+                className="bg-cyber-dark border border-cyber-cyan w-full max-w-lg p-6 relative shadow-[0_0_50px_rgba(0,242,255,0.1)]"
+            >
+                <button onClick={onClose} className="absolute top-4 right-4 text-gray-500 hover:text-white"><X size={20}/></button>
+                
+                <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+                    <Key className="text-cyber-cyan" /> INTEGRACIÓN MANUAL DE LLAVE
+                </h3>
+
+                <div className="space-y-6">
+                    <div className="bg-black border border-gray-700 p-4 rounded">
+                        <label className="block text-xs font-mono text-gray-500 mb-2 uppercase tracking-wider">Paso 1: Copia tu Llave Maestra</label>
+                        <div className="flex items-center gap-2">
+                            <code className="flex-1 bg-gray-900 p-2 text-cyber-cyan font-mono text-sm break-all border border-gray-800 rounded">
+                                {MASTER_KEY}
+                            </code>
+                            <button 
+                                onClick={handleCopy}
+                                className="p-2 bg-cyber-panel border border-gray-600 hover:border-cyber-cyan hover:text-cyber-cyan transition-colors rounded"
+                            >
+                                {copied ? <Check size={16}/> : <Copy size={16}/>}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="bg-black border border-gray-700 p-4 rounded">
+                         <label className="block text-xs font-mono text-gray-500 mb-2 uppercase tracking-wider">Paso 2: Pega para vincular</label>
+                         <input 
+                            type="text" 
+                            className="w-full bg-gray-900 border border-gray-800 p-3 text-white focus:border-cyber-cyan outline-none font-mono text-sm mb-4 rounded"
+                            placeholder="Pega la API Key aquí..."
+                            value={inputKey}
+                            onChange={(e) => setInputKey(e.target.value)}
+                         />
+                         <button 
+                            onClick={handleSave}
+                            disabled={!inputKey.trim()}
+                            className="w-full bg-cyber-cyan text-black font-bold py-3 uppercase tracking-widest hover:bg-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                         >
+                            CONECTAR AL SISTEMA
+                         </button>
+                    </div>
+                </div>
+            </motion.div>
+        </div>
+    );
+};
+
 const AuthModal: React.FC<{ onLogin: (email: string, name: string | undefined, plan: PlanType) => void, onClose: () => void }> = ({ onLogin, onClose }) => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -219,7 +290,8 @@ const AuthModal: React.FC<{ onLogin: (email: string, name: string | undefined, p
             }
 
             // Hardcoded Admin Check with Trim for robustness
-            if (email.trim() === 'administrador@sentinel.com' && password.trim() === 'adminsentinelcore10@') {
+            // FIXED: Added toLowerCase() to prevent case sensitivity issues for admin login
+            if (email.trim().toLowerCase() === 'administrador@sentinel.com' && password.trim() === 'adminsentinelcore10@') {
                 onLogin(email, 'Administrador', 'COMMAND');
             } else {
                 // Default Login
@@ -506,6 +578,10 @@ const Dashboard: React.FC<{ user: User, onBack: () => void, onUpgradeNeeded: () 
   const [isLoading, setIsLoading] = useState(false);
   const [analysisData, setAnalysisData] = useState<AnalysisResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  
+  // New state for manual API Key override
+  const [apiKey, setApiKey] = useState<string>('');
+  const [showKeyModal, setShowKeyModal] = useState(false);
 
   const t = DICTIONARY[currentLang];
 
@@ -534,11 +610,12 @@ const Dashboard: React.FC<{ user: User, onBack: () => void, onUpgradeNeeded: () 
     setError(null);
     setAnalysisData(null);
     try {
-      const result = await analyzeRequest(inputCode, currentModule, currentLang);
+      // Pass the manual apiKey if present
+      const result = await analyzeRequest(inputCode, currentModule, currentLang, apiKey);
       setAnalysisData(result);
       incrementUsage(); // Increment usage after successful call
-    } catch (err) {
-      setError("Secure link compromised or API Key missing.");
+    } catch (err: any) {
+      setError(err.message || "Secure link compromised or API Key missing.");
     } finally {
       setIsLoading(false);
     }
@@ -561,6 +638,13 @@ const Dashboard: React.FC<{ user: User, onBack: () => void, onUpgradeNeeded: () 
 
   return (
     <div className="flex h-screen bg-cyber-black overflow-hidden font-sans">
+        {showKeyModal && (
+            <ApiKeyModal 
+                onClose={() => setShowKeyModal(false)}
+                onSave={(key) => { setApiKey(key); setShowKeyModal(false); }}
+            />
+        )}
+
         {/* SIDEBAR */}
         <motion.aside 
             initial={{ x: -100 }} animate={{ x: 0 }}
@@ -628,6 +712,15 @@ const Dashboard: React.FC<{ user: User, onBack: () => void, onUpgradeNeeded: () 
                      </h2>
                 </div>
                 <div className="flex items-center gap-4">
+                     {/* Manual API Key Integration Button */}
+                     <button 
+                        onClick={() => setShowKeyModal(true)}
+                        className={`px-3 py-1.5 rounded flex items-center gap-2 text-[10px] font-bold uppercase transition-all border ${apiKey ? 'bg-cyber-cyan/10 border-cyber-cyan text-cyber-cyan' : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-cyber-cyan'}`}
+                     >
+                        <Key size={12} />
+                        {apiKey ? 'API KEY CONECTADA' : t.ui.integrateApi}
+                     </button>
+
                      <div className="flex bg-cyber-panel rounded border border-cyber-dark">
                         {(['es', 'en'] as Language[]).map(lang => (
                             <button key={lang} onClick={() => setCurrentLang(lang)} className={`px-2 py-1 text-[10px] font-bold uppercase ${currentLang === lang ? 'bg-cyber-dark text-cyber-cyan' : 'text-gray-600 hover:text-gray-400'}`}>

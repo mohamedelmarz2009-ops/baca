@@ -1,13 +1,20 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { AuditResult, AnalysisResponse, Severity, SentinelModule, Language } from "../types";
 
-const apiKey = process.env.API_KEY;
+// LLAVE MAESTRA INYECTADA DIRECTAMENTE
+const MASTER_KEY = "AIzaSyBYebg7cldNtx77C36YUptjafekZyunExk";
 
-if (!apiKey) {
-  console.error("API_KEY is missing from environment variables.");
-}
+// Prioriza process.env, si falla, usa la llave maestra
+const defaultApiKey = process.env.API_KEY || MASTER_KEY;
 
-const ai = new GoogleGenAI({ apiKey: apiKey || 'dummy-key-for-build' });
+// ESTRATEGIA DE ROTACIÓN DE MODELOS
+// Si el modelo principal (Gemini 3) da error 429 (Cuota excedida), 
+// el sistema saltará automáticamente a los siguientes.
+const MODEL_FALLBACK_CHAIN = [
+    'gemini-3-flash-preview',    // 1. Última tecnología (Poca cuota)
+    'gemini-2.0-flash-exp',      // 2. Experimental rápido (Alta cuota)
+    'gemini-flash-latest'        // 3. Estable (Máxima disponibilidad)
+];
 
 // Schema for the Audit Engine Module
 const AUDIT_SCHEMA: Schema = {
@@ -97,18 +104,15 @@ SENTINEL CORE // PROTECTING YOUR DIGITAL ASSETS
 // Helper for delay
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-export const analyzeRequest = async (input: string, module: SentinelModule, language: Language): Promise<AnalysisResponse> => {
+export const analyzeRequest = async (input: string, module: SentinelModule, language: Language, apiKeyOverride?: string): Promise<AnalysisResponse> => {
   try {
-    // Select model based on task complexity
-    // OPTIMIZATION: Using 'gemini-3-flash-preview' for all modules to prevent RESOURCE_EXHAUSTED/Quota errors on Free Tier.
-    // The Pro model has stricter rate limits.
-    let modelId = 'gemini-3-flash-preview';
-    
-    // Use Pro model for coding and complex tasks ONLY if you have a paid plan with higher quotas.
-    // Currently disabled to ensure stability.
-    // if (module === SentinelModule.AUDIT_ENGINE || module === SentinelModule.SECURE_FORGE) {
-    //     modelId = 'gemini-3-pro-preview';
-    // }
+    const effectiveKey = apiKeyOverride || defaultApiKey;
+
+    if (!effectiveKey) {
+        throw new Error("API Key Missing. Please integrate API Key manually.");
+    }
+
+    const ai = new GoogleGenAI({ apiKey: effectiveKey });
 
     let promptPrefix = "";
     let useSchema = false;
@@ -145,8 +149,6 @@ export const analyzeRequest = async (input: string, module: SentinelModule, lang
         systemInstruction: SYSTEM_INSTRUCTION + langInstruction,
     };
 
-    // Configure tools: Only enable Google Search for modules that benefit from external info and are NOT using JSON schema (to avoid conflicts)
-    // LEAK_HUNTER requires search. Others can use it for up-to-date info.
     if (module === SentinelModule.LEAK_HUNTER || module === SentinelModule.ADVISORY_CHAT || module === SentinelModule.CRISIS_SIMULATOR || module === SentinelModule.COMPLIANCE_SHIELD) {
         requestConfig.tools = [{ googleSearch: {} }];
     }
@@ -156,43 +158,52 @@ export const analyzeRequest = async (input: string, module: SentinelModule, lang
         requestConfig.responseSchema = AUDIT_SCHEMA;
     }
 
-    // RETRY LOGIC FOR RATE LIMITS
+    // --- LOGICA DE ROTACIÓN DE MODELOS (ANTI-429) ---
     let response;
-    let attempt = 0;
-    const maxRetries = 3;
+    let lastError;
+    let success = false;
 
-    while (attempt < maxRetries) {
+    // Iteramos por la cadena de modelos
+    for (const modelId of MODEL_FALLBACK_CHAIN) {
         try {
+            console.log(`Sentinel Core: Attempting analysis using model: ${modelId}`);
+            
             response = await ai.models.generateContent({
               model: modelId,
               contents: promptPrefix + input,
               config: requestConfig,
             });
-            break; // Success, exit loop
+            
+            // Si llegamos aquí, funcionó
+            success = true;
+            break; 
+
         } catch (e: any) {
-            attempt++;
-            // Check for rate limit errors (429 or Resource Exhausted)
+            lastError = e;
+            // Check for rate limit errors
             const isRateLimit = e.status === 429 || e.code === 429 || e.message?.includes('429') || e.message?.includes('Quota exceeded') || e.message?.includes('RESOURCE_EXHAUSTED');
             
-            if (isRateLimit && attempt < maxRetries) {
-                // Exponential backoff: 2s, 4s...
-                const waitTime = 2000 * Math.pow(2, attempt - 1);
-                console.warn(`Sentinel Core: Quota hit on attempt ${attempt}. Retrying in ${waitTime}ms...`);
-                await delay(waitTime);
-                continue;
+            if (isRateLimit) {
+                console.warn(`Sentinel Core: Model ${modelId} exhausted (429). Switching to next fallback model...`);
+                continue; // Salta al siguiente modelo en el bucle
+            } else {
+                // Si es otro error (ej. input inválido), lanzamos el error y paramos
+                throw e; 
             }
-            // If not rate limit or max retries reached, throw error
-            throw e;
         }
     }
 
-    if (!response || !response.text) {
-      throw new Error("No response received from SENTINEL CORE after retries.");
+    if (!success || !response || !response.text) {
+      // Si todos los modelos fallaron
+      const msg = lastError?.message || "Unknown error";
+      if (msg.includes('429') || msg.includes('Quota')) {
+          throw new Error("SYSTEM OVERLOAD: All neural models are currently at maximum capacity. Please wait 60 seconds.");
+      }
+      throw new Error(`Sentinel Core Failure: ${msg}`);
     }
 
     const text = response.text;
 
-    // Parse grounding metadata
     const groundingSources: { title: string; uri: string }[] = [];
     const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
     
